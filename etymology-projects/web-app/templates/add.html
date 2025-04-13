@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2 class="mb-4">새 단어 추가</h2>
+        <form id="addWordForm" method="POST" action="/add">
+            <div class="mb-3">
+                <label for="word" class="form-label">단어</label>
+                <input type="text" class="form-control" id="word" name="word" required>
+            </div>
+            <div class="mb-3">
+                <label for="etymology" class="form-label">어원</label>
+                <textarea class="form-control" id="etymology" name="etymology" rows="3"></textarea>
+            </div>
+            <div class="mb-3">
+                <label for="root" class="form-label">어근</label>
+                <input type="text" class="form-control" id="root" name="root">
+            </div>
+            <div class="mb-3">
+                <label for="prefix" class="form-label">접두사</label>
+                <input type="text" class="form-control" id="prefix" name="prefix">
+            </div>
+            <div class="mb-3">
+                <label for="suffix" class="form-label">접미사</label>
+                <input type="text" class="form-control" id="suffix" name="suffix">
+            </div>
+            <div class="mb-3">
+                <label for="meaning" class="form-label">의미</label>
+                <textarea class="form-control" id="meaning" name="meaning" rows="3"></textarea>
+            </div>
+            <button type="submit" class="btn btn-primary">추가하기</button>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('addWordForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(this);
+    fetch('/add', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        alert(data.message);
+        this.reset();
+    })
+    .catch(error => {
+        alert('오류가 발생했습니다.');
+        console.error('Error:', error);
+    });
+});
+</script>
+{% endblock %} 

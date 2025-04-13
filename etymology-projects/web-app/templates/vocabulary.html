@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="mb-4">
+    <h2>나의 단어장</h2>
+    <p class="text-muted">학습 중인 단어들을 관리할 수 있습니다.</p>
+</div>
+
+{% if vocab_items %}
+    {% for vocab in vocab_items %}
+    {% set data = vocab.word.raw_data|parse_json %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-start">
+                <div>
+                    <h3 class="card-title">
+                        {{ vocab.word.word }}
+                        {% if vocab.word.phonetic %}
+                        <small class="text-muted">[{{ vocab.word.phonetic }}]</small>
+                        {% endif %}
+                        {% if vocab.word.audio_url %}
+                        <button class="btn btn-sm btn-outline-secondary ms-2" onclick="playAudio('{{ vocab.word.audio_url }}')">
+                            <i class="bi bi-volume-up"></i> 발음 듣기
+                        </button>
+                        {% endif %}
+                    </h3>
+                    <p class="text-muted mb-2">추가된 날짜: {{ vocab.added_date.strftime('%Y-%m-%d') }}</p>
+                </div>
+                <button class="btn btn-outline-danger btn-sm" 
+                        onclick="removeFromVocabulary({{ vocab.id }})">
+                    삭제
+                </button>
+            </div>
+            
+            {% if data.meanings %}
+            <div class="mb-4">
+                <h5 class="text-primary d-flex justify-content-between align-items-center">
+                    <span>의미</span>
+                    <button class="btn btn-sm btn-outline-primary" onclick="translateSection('meanings-{{ vocab.id }}')">
+                        한국어로 번역
+                    </button>
+                </h5>
+                <div id="meanings-{{ vocab.id }}">
+                    {% for meaning in data.meanings %}
+                    <div class="bg-light p-3 rounded mb-2">
+                        <h6 class="text-muted">{{ meaning.partOfSpeech }}</h6>
+                        {% for definition in meaning.definitions %}
+                        <div class="mb-2">
+                            <p class="mb-1">{{ definition.definition }}</p>
+                            {% if definition.example %}
+                            <p class="mb-0 text-muted fst-italic">
+                                <small>Example: {{ definition.example }}</small>
+                            </p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                        
+                        {% if meaning.synonyms %}
+                        <div class="mt-2">
+                            <small class="text-muted">동의어:</small>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for synonym in meaning.synonyms %}
+                                <a href="/search?q={{ synonym }}" class="badge bg-light text-dark text-decoration-none">
+                                    {{ synonym }}
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        {% if meaning.antonyms %}
+                        <div class="mt-2">
+                            <small class="text-muted">반의어:</small>
+                            <div class="d-flex flex-wrap gap-1">
+                                {% for antonym in meaning.antonyms %}
+                                <a href="/search?q={{ antonym }}" class="badge bg-light text-dark text-decoration-none">
+                                    {{ antonym }}
+                                </a>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            
+            {% if data.origin %}
+            <div class="mb-3">
+                <h5 class="text-primary">어원</h5>
+                <p class="mb-0">{{ data.origin }}</p>
+            </div>
+            {% endif %}
+            
+            {% if vocab.note %}
+            <div class="mb-3">
+                <h6 class="text-primary">나의 노트</h6>
+                <p class="mb-0">{{ vocab.note }}</p>
+            </div>
+            {% endif %}
+            
+            <button class="btn btn-outline-primary btn-sm" 
+                    onclick="editNote({{ vocab.id }})">
+                노트 편집
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="alert alert-info">
+        <h4 class="alert-heading">단어장이 비어있습니다</h4>
+        <p class="mb-0">단어를 검색하고 단어장에 추가해보세요!</p>
+    </div>
+{% endif %}
+
+<script>
+let audioPlayer = null;
+
+function playAudio(url) {
+    if (audioPlayer) {
+        audioPlayer.pause();
+    }
+    audioPlayer = new Audio(url);
+    audioPlayer.play();
+}
+
+function translateSection(elementId) {
+    const element = document.getElementById(elementId);
+    const button = element.previousElementSibling.querySelector('button');
+    const textsToTranslate = [];
+    const elements = [];
+    
+    // 번역이 필요한 텍스트 수집
+    element.querySelectorAll('p:not(.translated)').forEach(p => {
+        if (!p.classList.contains('text-muted')) {
+            textsToTranslate.push(p.textContent);
+            elements.push(p);
+        }
+    });
+    
+    if (textsToTranslate.length === 0) {
+        location.reload();
+        return;
+    }
+    
+    button.disabled = true;
+    button.textContent = '번역 중...';
+    
+    // 각 텍스트 번역
+    Promise.all(textsToTranslate.map(text => 
+        fetch('/translate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ text: text })
+        }).then(response => response.json())
+    ))
+    .then(results => {
+        results.forEach((result, index) => {
+            if (result.translated) {
+                const p = elements[index];
+                const originalText = p.textContent;
+                p.textContent = result.translated;
+                p.classList.add('translated');
+                
+                // 원문을 작은 텍스트로 추가
+                const small = document.createElement('small');
+                small.className = 'text-muted d-block mt-1';
+                small.textContent = originalText;
+                p.parentNode.insertBefore(small, p.nextSibling);
+            }
+        });
+        button.textContent = '영어로 보기';
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('번역 중 오류가 발생했습니다.');
+        button.textContent = '한국어로 번역';
+    })
+    .finally(() => {
+        button.disabled = false;
+    });
+}
+
+function removeFromVocabulary(vocabId) {
+    if (confirm('정말로 이 단어를 단어장에서 삭제하시겠습니까?')) {
+        fetch(`/vocabulary/remove/${vocabId}`, {
+            method: 'POST'
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            location.reload();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('삭제 중 오류가 발생했습니다.');
+        });
+    }
+}
+
+function editNote(vocabId) {
+    const note = prompt('노트를 입력하세요:');
+    if (note !== null) {
+        fetch(`/vocabulary/edit/${vocabId}`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ note: note })
+        })
+        .then(response => response.json())
+        .then(data => {
+            alert(data.message);
+            location.reload();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('노트 저장 중 오류가 발생했습니다.');
+        });
+    }
+}
+</script>
+
+<!-- Bootstrap Icons -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css">
+{% endblock %} 
